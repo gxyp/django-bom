@@ -13,3 +13,21 @@ def full_part_number_to_broken_part(part_number):
     }
 
     return civ
+
+def full_part_number_to_broken_cmpart(part_number):
+    mainpart_number, revision = part_number.split("_") 
+    mainPart, item = mainpart_number.split("-")
+
+    part_class = PartClass.objects.filter(code=mainPart[:-1])[0]
+    part_variation = int(mainPart[-1])
+    part_item = int(item)
+
+
+    civ = {
+        'class': part_class,
+        'item': part_item,
+        'variation': part_variation,
+        'revision': revision
+    }
+
+    return civ

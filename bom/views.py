@@ -9,6 +9,8 @@ from django.http import HttpResponse, HttpResponseRedirect, HttpResponseNotFound
 from django.template.response import TemplateResponse
 from django.db import IntegrityError
 from django.db.models import Q
+from django.db.models.functions import Concat, Substr,Length,Cast
+from django.db.models import Func, CharField, F,Value, IntegerField
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.cache import cache
@@ -16,7 +18,7 @@ from django.urls import reverse
 from django.utils.encoding import smart_str
 from django.contrib import messages
 from json import loads, dumps
-from .convert import full_part_number_to_broken_part
+from .convert import full_part_number_to_broken_part, full_part_number_to_broken_cmpart
 from .models import Part, PartClass, Subpart, SellerPart, Organization, PartFile, Manufacturer
 from .forms import PartInfoForm, PartForm, AddSubpartForm, FileForm, AddSellerPartForm
 from .octopart_parts_match import match_part
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 def home(request):
     profile = request.user.bom_profile()
     organization = profile.organization
+    partclasses = PartClass.objects.all().annotate(pc_int=Cast('code',IntegerField())).order_by('pc_int')
 
     if profile.organization is None:
         organization, created = Organization.objects.get_or_create(
@@ -42,8 +45,9 @@ def home(request):
     parts = Part.objects.filter(
         organization=organization).order_by(
         'number_class__code',
+        'number_variation',
         'number_item',
-        'number_variation')
+	'revision')
 
     autocomplete_dict = {}
     for part in parts:
@@ -57,9 +61,20 @@ def home(request):
 
     autocomplete = json.dumps(autocomplete_dict)
 
+    parts = parts.all().annotate(item_t= Concat(Value('000'),'number_item',output_field=CharField()))
+    parts = parts.all().annotate(item = Substr(F('item_t'),Length('item_t')-2,3,output_field=CharField()))
+
+    parts = parts.all().annotate(class_t = Concat(Value('00'),F('number_class')))
+    parts= parts.all().annotate(gc= Substr(F('class_t'),Length('class_t')-1,2,output_field=CharField()))
+
+    parts = parts.all().annotate(cm_pn = Concat(F('gc'),F('number_variation'),Value('-'),F('item'),Value('_'),F('revision')))
+
+
+    parts = parts.all().order_by('gc', 'number_variation', 'number_item', 'revision')
+
     query = request.GET.get('q', '')
     if query:
-        parts = parts.filter(Q(description__icontains=query) | Q(manufacturer_part_number__icontains=query) | Q(manufacturer__name__icontains=query))
+        parts = parts.filter(Q(description__icontains=query) | Q(manufacturer_part_number__icontains=query) | Q(manufacturer__name__icontains=query) | Q(cm_pn__icontains=query) )
         # TODO: query full part number
 
     return TemplateResponse(request, 'bom/dashboard.html', locals())
@@ -309,12 +324,13 @@ def part_upload_bom(request, part_id):
                 
                 if 'part_number' in partData and 'quantity' in partData and len(partData['part_number']) > 0:
                     try:
-                        civ = full_part_number_to_broken_part(
+                        civ = full_part_number_to_broken_cmpart(
                             partData['part_number'])
                         subparts = Part.objects.filter(
                             number_class=civ['class'],
                             number_item=civ['item'],
-                            number_variation=civ['variation'])
+                            number_variation=civ['variation'],
+                            revision=civ['revision'])
                     except IndexError:
                         messages.error(
                             request, "Invalid part_number: {}".format(partData['part_number']))
@@ -324,28 +340,6 @@ def part_upload_bom(request, part_id):
                         messages.info(
                             request, "Subpart: `{}` doesn't exist".format(
                                 partData['part_number']))
-                        continue
-
-                    subpart = subparts[0]
-                    count = partData['quantity']
-                    if part == subpart:
-                        messages.error(
-                            request, "Recursive part association: a part cant be a subpart of itsself")
-                        return HttpResponseRedirect(reverse('part-manage-bom', kwargs={'part_id': part_id}))
-
-                    sp = Subpart(
-                        assembly_part=part,
-                        assembly_subpart=subpart,
-                        count=count)
-                    sp.save()
-                elif 'manufacturer_part_number' in partData and 'quantity' in partData:
-                    mpn = partData['manufacturer_part_number']
-                    subparts = Part.objects.filter(manufacturer_part_number=mpn)
-
-                    if len(subparts) == 0:
-                        messages.info(
-                            request, "Subpart: `{}` doesn't exist".format(
-                                partData['manufacturer_part_number']))
                         continue
 
                     subpart = subparts[0]
@@ -375,7 +369,7 @@ def upload_parts(request):
     user = request.user
     profile = user.bom_profile()
     organization = profile.organization
-    partclasses = PartClass.objects.all()
+    partclasses = PartClass.objects.all().annotate(pc_int=Cast('code',IntegerField())).order_by('pc_int')
 
     if request.method == 'POST' and request.FILES['file'] is not None:
         form = FileForm(request.POST, request.FILES)
@@ -402,22 +396,34 @@ def upload_parts(request):
                     if 'manufacturer' in partData:
                         mfg_name = partData['manufacturer'] if partData['manufacturer'] is not None else ''
                         mfg, created = Manufacturer.objects.get_or_create(
-                            name=mfg_name, organization=organization)
+                            name=mfg_name.upper(), organization=organization)
+
+		    note = ''	
+                    if 'note' in partData:
+                        note = partData['note'] 
+
+                    mainPart, item = partData['part_class'].split("-")
+   		    gaopClass = mainPart[:-1]
+		    gaov = int(mainPart[-1])
+		    item = int(item)
 
                     try:
                         part_class = PartClass.objects.get(
-                            code=partData['part_class'])
+                            code=gaopClass)
                     except PartClass.DoesNotExist:
                         messages.error(
                             request, "Partclass {} doesn't exist.".format(
-                                partData['part_class']))
+                                gaopClass))
                         return HttpResponseRedirect(reverse('error'))
 
                     part, created = Part.objects.get_or_create(number_class=part_class,
+							       number_item=item,
+							       number_variation=gaov,
                                                                description=partData['description'],
                                                                revision=partData['revision'],
                                                                organization=organization,
                                                                manufacturer_part_number=mpn,
+							       note = note,
                                                                manufacturer=mfg)
                     if created:
                         messages.info(
@@ -564,11 +570,12 @@ def create_part(request):
                     number_class=form.cleaned_data['number_class'],
                     number_item=form.cleaned_data['number_item'],
                     number_variation=form.cleaned_data['number_variation'],
+                    revision=form.cleaned_data['revision'],
                     manufacturer_part_number=form.cleaned_data['manufacturer_part_number'],
                     manufacturer=form.cleaned_data['manufacturer'],
                     organization=organization,
                     defaults={'description': form.cleaned_data['description'],
-                            'revision': form.cleaned_data['revision'],
+                              'note' : "", 
                             }
                 )
             except IntegrityError as e:

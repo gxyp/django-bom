@@ -7,6 +7,7 @@ from django.contrib.auth.models import User, Group
 from .validators import alphanumeric, numeric
 from django.core.exceptions import ValidationError
 from django.utils.translation import ugettext as _
+ 
 
 
 class Organization(models.Model):
@@ -38,7 +39,7 @@ User.add_to_class('bom_profile', _user_meta)
 
 
 class PartClass(models.Model):
-    code = models.CharField(max_length=3, unique=True)
+    code = models.CharField(max_length=3, unique=True, primary_key=True)
     name = models.CharField(max_length=255, default=None)
     comment = models.CharField(max_length=255, default=None, blank=True)
 
@@ -51,11 +52,15 @@ class Manufacturer(models.Model):
     organization = models.ForeignKey(Organization)
 
     class Meta:
+        unique_together = ['name', 'organization']
         ordering = ['name']
 
     def __unicode__(self):
         return u'%s' % (self.name)
 
+    def save(self, *args, **kwargs):
+        self.name = self.name.upper()
+        super(Manufacturer, self).save(*args, **kwargs)
 
 # Numbering scheme is hard coded for now, may want to change this to a
 # setting depending on a part numbering scheme
@@ -73,6 +78,11 @@ class Part(models.Model):
         max_length=128, default='', blank=True)
     manufacturer = models.ForeignKey(
         Manufacturer, default=None, blank=True, null=True)
+
+
+    note = models.CharField(max_length=100, default=None)
+    created_at = models.DateTimeField(auto_now_add=True)  
+
     subparts = models.ManyToManyField(
         'self',
         blank=True,
@@ -83,11 +93,19 @@ class Part(models.Model):
             'assembly_subpart'))
 
     class Meta():
-        unique_together = ['number_class', 'number_item', 'number_variation', 'organization', ]
+        unique_together = ['number_class', 'number_item', 'number_variation', 'organization','revision','manufacturer']
 
     def full_part_number(self):
-        return "{0}-{1}-{2}".format(self.number_class.code,
-                                    self.number_item, self.number_variation)
+#        return "{0}-{1}-{2}".format(self.number_class.code,
+#                                    self.number_item, self.number_variation)
+        return "{0}{1}-{2:0>3}_{3}".format(self.number_class.code,
+                                    self.number_variation, self.number_item,
+				    self.revision)
+
+#    def CM_part_number(self):
+#        return "{0}{1}-{2:0>3}_{3}".format(self.number_class.code,
+#                                    self.number_variation, self.number_item,
+#				    self.revision)
 
     # def distributor_parts(self):
     #     return SellerPart.objects.filter(
@@ -189,7 +207,10 @@ class Part(models.Model):
         super(Part, self).save()
 
     def __unicode__(self):
-        return u'%s' % (self.full_part_number())
+	if self.description :
+        	return u'%s' % (self.description)
+	else :
+		return u'%s' % (self.full_part_number())
 
 
 class Subpart(models.Model):

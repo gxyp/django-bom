@@ -1,6 +1,9 @@
 from django import forms
 # from django.core.validators import DecimalValidator
 
+from django.db.models.functions import Concat, Substr,Length,Cast
+from django.db.models import Func, CharField, F,Value,IntegerField
+
 from .models import Part, PartClass, Manufacturer, Subpart, Seller
 from .validators import decimal, alphanumeric, numeric
 
@@ -23,7 +26,7 @@ class PartForm(forms.Form):
     number_variation = forms.CharField(
         max_length=2, label='Part Variation', required=False, 
         validators=[alphanumeric],
-        widget=forms.TextInput(attrs={'placeholder': 'Auto-Generated if blank'}))
+        widget=forms.TextInput(attrs={'placeholder': 'Subcategory for each class'}))
     description = forms.CharField(max_length=255, label='Description*')
     revision = forms.CharField(max_length=2, label='Revision*', initial=1)
     manufacturer_part_number = forms.CharField(max_length=128, required=False)
@@ -73,9 +76,23 @@ class AddSubpartForm(forms.Form):
             part = Part.objects.get(id=self.part_id)
             unusable_part_ids = [p.id for p in part.where_used_full()]
             unusable_part_ids.append(part.id)
-        self.fields['assembly_subpart'].queryset = Part.objects.filter(
-            organization=self.organization).exclude(id__in=unusable_part_ids).order_by(
-            'number_class__code', 'number_item', 'number_variation')
+
+
+        parts = Part.objects.filter(organization=self.organization).exclude(id__in=unusable_part_ids)
+
+
+        parts = parts.all().annotate(item_t= Concat(Value('000'),'number_item',output_field=CharField()))
+        parts = parts.all().annotate(item = Substr(F('item_t'),Length('item_t')-2,3,output_field=CharField()))
+
+        parts = parts.all().annotate(class_t = Concat(Value('00'),F('number_class')))
+        parts= parts.all().annotate(gc= Substr(F('class_t'),Length('class_t')-1,2,output_field=CharField()))
+
+        parts = parts.all().annotate(cm_pn = Concat(F('gc'),F('number_variation'),Value('-'),F('item'),Value('_'),F('revision')))
+
+
+        parts = parts.all().order_by('gc', 'number_variation', 'number_item', 'revision')
+
+        self.fields['assembly_subpart'].queryset = parts 
             
         self.fields['assembly_subpart'].label_from_instance = \
             lambda obj: "%s" % obj.full_part_number(

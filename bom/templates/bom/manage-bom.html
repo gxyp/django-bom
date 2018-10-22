@@ -69,10 +69,10 @@ Manage BOM
                     <th>Rev</th>
                     <th>Manufacturer</th>
                     <th>MPN</th>
-                    <th>Seller</th>
-                    <th>Price</th>
+                    <!-- <th>Seller</th>  -->
+                    <!-- <th>Price</th> -->
                     {% if profile.role == 'A' %}
-                    <th>Octopart Match</th>
+                    <!-- <th>Octopart Match</th> -->
                     <th>Remove</th>
                     {% endif %}
                 </tr>
@@ -94,13 +94,14 @@ Manage BOM
                     <td>{{ subpart.part.revision }}</td>
                     <td>{{ subpart.part.manufacturer.name }}</td>
                     <td>{{ subpart.part.manufacturer_part_number }}</td>
-                    <td>{{ subpart.seller_part.seller.name | default:"-" }}</td>
-                    <td>{{ subpart.seller_price | default:"-"}}</td>
-                    <td><a href="{% url 'part-octopart-match' part_id=subpart.part.id %}">Match Part</a></td>
+                    <!-- <td>{{ subpart.seller_part.seller.name | default:"-" }}</td> -->
+                    <!-- <td>{{ subpart.seller_price | default:"-"}}</td> -->
+                    <!-- <td><a href="{% url 'part-octopart-match' part_id=subpart.part.id %}">Match Part</a></td> -->
+
                     {% if subpart.indent_level == 1 and subpart.subpart is not None %}
                     <td><a href="{% url 'part-remove-subpart' part_id=part.id subpart_id=subpart.subpart.id %}" onclick="return confirm('Are you sure you want to remove {{ subpart.part.full_part_number }}?')">Remove</a></td>
                     {% else %}
-                    <td></td>
+                    <!-- <td></td> -->
                     {% endif %}
                 </tr>
                 {% endfor %}

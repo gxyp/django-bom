@@ -28,6 +28,8 @@
         </div>
     </div>
 </div>
+
+{% if query != "" %} 
 <div class="part-list push-footer">
     <table class="highlight part-list tight">
         <thead>
@@ -56,6 +58,23 @@
         </tbody>
     </table>
 </div>
+{% else %}
+<h5>Part Classes Available</h5>
+<table>
+    <thead>
+        <th class="tighter text-normal">Code</th>
+        <th class="tighter text-normal">Name</th>
+        <th class="tighter text-normal">Description</th>
+    </thead>
+    {% for partclass in partclasses %}
+    <tbody>
+        <td class="tighter text-normal">{{ partclass.code }}</td>
+        <td class="tighter text-normal">{{ partclass.name }}</td>
+        <td class="tighter text-normal">{{ partclass.comment }}</td>
+    </tbody>
+    {% endfor %}
+</table>
+{% endif %}
 
 <script>
 // console.log('{{ autocomplete|safe }}');

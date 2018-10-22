@@ -26,14 +26,14 @@ Create New Part
                 {{ form.number_class }}
             </div>
             <div class="fieldWrapper col s3">
+                <label for="{{ form.number_variation.id_for_label }}">Part SubCategory:</label>
+                {{ form.number_variation.errors }}
+                {{ form.number_variation }}
+            </div>
+            <div class="fieldWrapper col s3">
                 <label for="{{ form.number_item.id_for_label }}">Part Number:</label>
                 {{ form.number_item.errors }}
                 {{ form.number_item }}
-            </div>
-            <div class="fieldWrapper col s3">
-                <label for="{{ form.number_variation.id_for_label }}">Part Variation:</label>
-                {{ form.number_variation.errors }}
-                {{ form.number_variation }}
             </div>
         </div>
         <div class="row">
